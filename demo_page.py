@@ -9,28 +9,34 @@ import numpy as np
 import tensorflow as tf
 import os
 
+# Define the start date and today's date
 START = "2014-03-27"
 TODAY = date.today().strftime("%Y-%m-%d")
 
 def display_demo_page():
     #st.title('Stock Forecast Demo')
 
+    # Define stock options for the user to select
     stocks = ('GOOG', 'AAPL', 'MSFT', 'GME')
     selected_stock = st.selectbox('Select dataset for prediction', stocks)
 
+    # Allow the user to select the number of years for prediction
     n_years = st.slider('Years of prediction:', 1, 4)
     period = n_years * 365
 
+    # Load data from Yahoo Finance
     @st.cache_data
     def load_data(ticker):
         data = yf.download(ticker, START, TODAY)
         data.reset_index(inplace=True)
         return data
 
+    # Display a loading message while the data is being loaded
     data_load_state = st.text('Loading data...')
     data = load_data(selected_stock)
     data_load_state.text('Loading data... done!')
 
+    # Display raw data
     st.subheader('Raw data')
     st.write(data.tail())
 
@@ -75,17 +81,18 @@ def display_demo_page():
     predictions = np.array(predictions)
 
     # Generate actions based on the model's predictions
-    threshold = 0.01  # 1% threshold for decision making
+    threshold = 0.005  # Adjust threshold to 0.5% for more flexibility
     actions = np.zeros(len(predictions), dtype=int)
 
     for i in range(1, len(predictions)):
-        change = (predictions[i] - recent_data[-1]) / recent_data[-1]  # Percentage change
+        # Calculate change from the previous prediction instead of recent_data[-1]
+        change = (predictions[i] - predictions[i-1]) / predictions[i-1]  # Compare with previous prediction
         if change > threshold:
             actions[i] = 1  # Buy
         elif change < -threshold:
-            actions[i] = -1  # Sell
+            actions[i] = 2  # Sell
         else:
-            actions[i] = 0  # Hold
+            actions[i] = 0  # Stay
 
     # Forecast with Prophet
     df_train = data[['Date', 'Close']]
@@ -106,9 +113,11 @@ def display_demo_page():
         "trend_upper": "Trend (Upper Bound)"
     })
 
+    # Display forecast data
     st.subheader('Forecast data')
     st.write(forecast_display.tail())
 
+    # Plot forecast data
     st.write(f'Forecast plot for {n_years} years')
     fig1 = plot_plotly(m, forecast)
     st.plotly_chart(fig1)
@@ -120,13 +129,12 @@ def display_demo_page():
     # Ensure the length of actions matches the length of forecast_dates
     forecast_dates = forecast['ds'].iloc[-len(actions):]
 
-    # Create a DataFrame for actions
+    # Create a DataFrame for actions (Buy, Sell, Stay)
     actions_df = pd.DataFrame({
         'Date': forecast_dates,  # Use forecast dates
-        'Action': np.where(actions == 0, 'Hold', np.where(actions == 1, 'Buy', 'Sell'))
+        'Action': np.where(actions == 0, 'Stay', np.where(actions == 1, 'Buy', 'Sell'))
     })
 
     st.subheader('Actions')
     st.write(actions_df)
-
 
